@@ -271,13 +271,14 @@ class ScriptRunner:
         # 如果有当前窗口，设置为目标窗口
         if self.current_window:
             clicker._target_window = self.current_window['hwnd']
+            # 激活目标窗口
+            ctypes.windll.user32.SetForegroundWindow(self.current_window['hwnd'])
+            time.sleep(0.15)
 
         pos = clicker.find_image(image_name)
 
         if pos:
             self._last_image_found = pos
-            clicker.window_finder.set_foreground(self.current_window['hwnd'] if self.current_window else None)
-            time.sleep(0.1)
             import pyautogui
             pyautogui.click(pos[0], pos[1])
             self._log(f"✅ 已点击位置: {pos}")
@@ -400,13 +401,74 @@ class ScriptRunner:
         return True
 
     def cmd_type_text(self, text: str) -> bool:
-        """输入文本"""
+        """输入文本（支持中文，使用 Windows 剪贴板粘贴）"""
         self._log(f"⌨️ 输入文本: {text}")
 
         import pyautogui
-        pyautogui.write(text, interval=0.05)
-        self._log(f"✅ 输入完成")
-        return True
+
+        # 确保焦点在目标窗口
+        if self.current_window:
+            hwnd = self.current_window['hwnd']
+            self._log(f"   激活目标窗口: {self.current_window['title']}")
+            ctypes.windll.user32.SetForegroundWindow(hwnd)
+            time.sleep(0.3)
+
+            # 点击窗口内部，确保焦点在输入框
+            rect = self.current_window.get('rect')
+            if rect:
+                center_x = (rect[0] + rect[2]) // 2
+                center_y = (rect[1] + rect[3]) // 2
+                pyautogui.click(center_x, center_y)
+                time.sleep(0.2)
+        else:
+            self._log(f"   ⚠️ 未设置目标窗口，可能输入到错误位置")
+
+        # 设置剪贴板并粘贴
+        if self._set_clipboard_text(text):
+            time.sleep(0.1)
+            pyautogui.hotkey('ctrl', 'v')
+            time.sleep(0.1)
+            self._log(f"✅ 输入完成")
+            return True
+        else:
+            self._log(f"❌ 剪贴板设置失败")
+            return False
+
+    def _set_clipboard_text(self, text: str) -> bool:
+        """设置剪贴板文本（通过临时文件，最可靠）"""
+        import subprocess
+        import tempfile
+        import os
+
+        temp_path = None
+        try:
+            # 写入 UTF-8 临时文件
+            fd, temp_path = tempfile.mkstemp(suffix='.txt')
+            with os.fdopen(fd, 'w', encoding='utf-8') as f:
+                f.write(text)
+
+            # PowerShell 读取文件并设置剪贴板
+            cmd = ['powershell', '-NoProfile', '-Command',
+                   f"Get-Content -Path '{temp_path}' -Encoding UTF8 | Set-Clipboard"]
+
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+
+            if result.returncode == 0:
+                return True
+            else:
+                self._log(f"剪贴板命令失败: {result.stderr.strip()}")
+                return False
+
+        except Exception as e:
+            self._log(f"剪贴板设置失败: {e}")
+            return False
+        finally:
+            # 清理临时文件
+            if temp_path and os.path.exists(temp_path):
+                try:
+                    os.unlink(temp_path)
+                except:
+                    pass
 
     def cmd_press_key(self, key: str) -> bool:
         """按键"""
