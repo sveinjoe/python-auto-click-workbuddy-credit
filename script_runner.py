@@ -18,6 +18,17 @@ from image_clicker import (
     create_workbuddy_clicker
 )
 
+# 修复 Windows 控制台 GBK 编码问题
+if sys.platform == 'win32':
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
+    try:
+        sys.stderr.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
+
 
 class ScriptRunner:
     """自动化脚本运行器"""
