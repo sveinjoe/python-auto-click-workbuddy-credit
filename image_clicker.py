@@ -24,6 +24,29 @@ WM_LBUTTONDOWN = 0x0201
 WM_LBUTTONUP = 0x0202
 WM_MOUSEMOVE = 0x0200
 
+# 窗口状态常量
+SW_RESTORE = 9
+SW_SHOWMINIMIZED = 2
+SW_SHOWMAXIMIZED = 3
+SW_SHOWNOACTIVATE = 4
+GWL_STYLE = -16
+WS_VISIBLE = 0x10000000
+WS_MINIMIZE = 0x20000000
+
+# WINDOWPLACEMENT 结构体（ctypes.wintypes 没有这个，需要手动定义）
+class _POINT(ctypes.Structure):
+    _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
+
+class WINDOWPLACEMENT(ctypes.Structure):
+    _fields_ = [
+        ("length", ctypes.wintypes.UINT),
+        ("flags", ctypes.wintypes.UINT),
+        ("showCmd", ctypes.wintypes.UINT),
+        ("ptMinPosition", _POINT),
+        ("ptMaxPosition", _POINT),
+        ("rcNormalPosition", ctypes.wintypes.RECT),
+    ]
+
 
 class WindowFinder:
     """Windows 窗口查找器"""
@@ -122,6 +145,38 @@ class WindowFinder:
         return bool(ctypes.windll.user32.SetWindowPos(
             hwnd, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE
         ))
+
+    def is_minimized(self, hwnd: int) -> bool:
+        """判断窗口是否处于最小化状态"""
+        placement = WINDOWPLACEMENT()
+        placement.length = ctypes.sizeof(WINDOWPLACEMENT)
+        if ctypes.windll.user32.GetWindowPlacement(hwnd, ctypes.byref(placement)):
+            return placement.showCmd == SW_SHOWMINIMIZED
+        return False
+
+    def restore(self, hwnd: int) -> bool:
+        """恢复（取消最小化）窗口"""
+        # 先用 SW_RESTORE 恢复正常大小
+        result1 = ctypes.windll.user32.ShowWindow(hwnd, SW_RESTORE)
+        time.sleep(0.3)
+        # 再激活并置前
+        ctypes.windll.user32.SetForegroundWindow(hwnd)
+        time.sleep(0.2)
+        # 额外用 SetWindowPos 确保置顶
+        SWP_NOMOVE = 0x0001
+        SWP_NOSIZE = 0x0002
+        HWND_TOP = 0
+        ctypes.windll.user32.SetWindowPos(hwnd, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE)
+        return bool(result1)
+
+    def is_window_too_small(self, hwnd: int, threshold: int = 50) -> bool:
+        """判断窗口是否太小（可能是最小化状态）"""
+        rect = self.get_window_rect(hwnd)
+        if not rect:
+            return True
+        width = rect[2] - rect[0]
+        height = rect[3] - rect[1]
+        return width < threshold or height < threshold
 
 
 class ImageClicker:

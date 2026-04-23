@@ -254,6 +254,17 @@ class ScriptRunner:
             # 获取窗口区域
             rect = finder.get_window_rect(hwnd)
 
+            # 自动检测并恢复最小化窗口
+            if finder.is_minimized(hwnd) or finder.is_window_too_small(hwnd, threshold=100):
+                self._log(f"⚠️ 检测到窗口处于最小化状态，尝试恢复...")
+                finder.restore(hwnd)
+                time.sleep(0.5)  # 等待窗口恢复
+                # 重新获取窗口区域
+                rect = finder.get_window_rect(hwnd)
+                self._log(f"✅ 窗口已恢复")
+                if rect:
+                    self._log(f"   新位置: ({rect[0]}, {rect[1]}) - ({rect[2]}, {rect[3]})")
+
             self.current_window = {
                 'hwnd': hwnd,
                 'title': window_title,
